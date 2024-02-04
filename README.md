@@ -1,2 +1,2 @@
-# led-matrix-display
-How about both?
+# display
+LED matrix display.
