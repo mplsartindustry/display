@@ -1,0 +1,2 @@
+char wifiSsid[] = "";
+char wifiPass[] = "";
