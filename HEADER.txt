@@ -20,6 +20,3 @@
     <http://www.gnu.org/licenses/>.
 
 */
-
-char wifiSsid[] = "";
-char wifiPass[] = "";
