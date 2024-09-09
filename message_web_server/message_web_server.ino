@@ -95,6 +95,7 @@ void setup(void) {
   matrix.show();
 
   while (WiFi.status() == WL_NO_MODULE) {
+    matrix.setCursor(0, 0);
     matrix.println("WiFi module failed");
     delay(1000);
   }
@@ -105,10 +106,14 @@ void setup(void) {
     delay(500);
   } while (wifiStatus != WL_CONNECTED);
 
+  // start the web server on port 80
+  server.begin();
+
   clear();  
   wave(60);
 
   clear();
+  matrix.setCursor(0, 0);
   matrix.println(WiFi.localIP());
   matrix.show();
 }
