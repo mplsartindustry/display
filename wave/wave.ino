@@ -23,14 +23,29 @@
 
 #include <Adafruit_Protomatter.h>
 
-uint8_t rgbPins[]  = { 7, 8, 9, 10, 11, 12 };
+uint8_t matrixChainWidth = 64;
+uint8_t bitDepth = 6;
+uint8_t matrixChains = 1;
+uint8_t rgbPins[] = { 7, 8, 9, 10, 11, 12 };
+uint8_t addressLines = 4;
 uint8_t addrPins[] = { 17, 18, 19, 20 };
-uint8_t clockPin   = 14;
-uint8_t latchPin   = 15;
-uint8_t oePin      = 16;
+uint8_t clockPin = 14;
+uint8_t latchPin = 15;
+uint8_t oePin = 16;
+bool doubleBuffered = true;
 
 Adafruit_Protomatter matrix(
-  64, 4, 1, rgbPins, 4, addrPins, clockPin, latchPin, oePin, false);
+  matrixChainWidth,
+  bitDepth,
+  matrixChains,
+  rgbPins,
+  addressLines,
+  addrPins,
+  clockPin,
+  latchPin,
+  oePin,
+  doubleBuffered
+);
 
 #define rgb(r, g, b) matrix.color565(r, g, b)
 
@@ -78,7 +93,7 @@ void wave(int wave) {
       if (x > (wave - 1)) {
         matrix.drawPixel(x - wave, y, off);
       }
-      matrix.drawPixel(x, y, map_seq(x, 0, matrix.width(), blues, 11));
+      matrix.drawPixel(x, y, map_seq(x, 0, matrix.width(), blues, 12));
     }
     matrix.show();
     delay(40);
@@ -94,5 +109,5 @@ void wave(int wave) {
 
 void loop(void) {
   delay(4000);
-  wave(80);
+  wave(40);
 }
