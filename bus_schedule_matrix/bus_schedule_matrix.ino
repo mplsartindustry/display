@@ -36,6 +36,17 @@ const uint8_t oePin      = 16;
 Adafruit_Protomatter matrix(128, 4, 1, rgbPins, 4, addrPins, clockPin, latchPin, oePin, false);
 WiFiSSLClient client;
 
+const uint8_t COLOR_COUNT = 7;
+uint16_t busColors[COLOR_COUNT] = {
+  matrix.color565(255, 0, 0),
+  matrix.color565(255, 128, 0),
+  matrix.color565(255, 255, 0),
+  matrix.color565(0, 255, 0),
+  matrix.color565(0, 255, 255),
+  matrix.color565(0, 0, 255),
+  matrix.color565(128, 0, 255),
+};
+
 #define API_HOST "svc.metrotransit.org"
 
 // Up to 10 chars long to fit (until smaller font)
@@ -46,12 +57,65 @@ WiFiSSLClient client;
 
 // Requests alternate between the two stops
 // Actual interval is request*anim in milliseconds + time to redraw
-#define REQUEST_INTERVAL 200
+#define REQUEST_INTERVAL 192
 
 // TODO: Make bigger once I add smaller font
 // 1 more than fits on screen
 #define MAX_BUSES 4
 #define ROW_HEIGHT 8
+
+struct AssignedColor {
+  char tripId[128];
+  uint16_t color;
+};
+
+struct TripColors {
+  AssignedColor assignedColors[COLOR_COUNT];
+  int8_t filled[COLOR_COUNT];
+  uint8_t nextColorIdx;
+
+  TripColors(): nextColorIdx(0) {
+    for (uint8_t i = 0; i < COLOR_COUNT; i++) {
+      filled[i] = -1;
+    }
+  }
+
+  uint16_t getColor(const char *tripId) {
+    // Find already assigned one with this trip id
+    for (uint8_t i = 0; i < COLOR_COUNT; i++) {
+      if (filled[i] >= 0 && strcmp(tripId, assignedColors[i].tripId) == 0) {
+        // Trip ID matches
+        return assignedColors[i].color;
+      }
+    }
+
+    // Decrement other slots. This will discard the oldest entry
+    for (uint8_t i = 0; i < COLOR_COUNT; i++) {
+      if (filled[i] >= 0) {
+        filled[i] -= 1;
+      }
+    }
+
+    // Search for empty slot
+    for (uint8_t i = 0; i < COLOR_COUNT; i++) {
+      if (filled[i] < 0) {
+        uint16_t color = busColors[nextColorIdx++];
+        if (nextColorIdx >= COLOR_COUNT)
+          nextColorIdx -= COLOR_COUNT;
+
+        filled[i] = COLOR_COUNT - 1;
+        assignedColors[i].color = color;
+        strcpy(assignedColors[i].tripId, tripId);
+
+        return color;
+      }
+    }
+
+    return matrix.color565(255, 255, 255);
+  }
+};
+
+TripColors tripColors;
 
 struct BusInfo {
   bool present;
@@ -64,6 +128,8 @@ struct BusInfo {
   const char *tripId; // Unique per actual bus
 
   int busNameLen;
+  uint16_t color;
+  bool actual;
 
   void stepTowards(int targetY) {
     if (this->currentY < targetY)
@@ -77,6 +143,8 @@ struct BusInfoSet {
   JsonDocument doc; // Need to keep document around so strings in this.buses stay valid
   BusInfo buses[MAX_BUSES];
   int longestRoute;
+
+  DeserializationError error;
 
   BusInfoSet() {
     for (int i = 0; i < MAX_BUSES; i++) {
@@ -107,7 +175,7 @@ struct BusSchedule {
     this->info2Valid = false;
   }
 
-  void draw() {
+  void draw(float progressPct) {
     matrix.setTextWrap(false);
 
     matrix.fillRect(this->baseX, 0, 64, ROW_HEIGHT - 1, 0); // Clear behind title
@@ -115,9 +183,21 @@ struct BusSchedule {
       matrix.fillRect(this->baseX, ROW_HEIGHT, 64, 32 - ROW_HEIGHT, 0); // Clear behind buses
       this->newData = false;
     }
-    matrix.drawFastHLine(this->baseX, ROW_HEIGHT - 1, 64, matrix.color565(64, 64, 64)); // Underline
-    matrix.setCursor(this->baseX, 0);
+    int progressPt = (int) (64 - 64 * progressPct);
+    matrix.drawFastHLine(this->baseX, ROW_HEIGHT - 1, progressPt, matrix.color565(64, 64, 64)); // Underline
+    matrix.drawFastHLine(this->baseX + progressPt, ROW_HEIGHT - 1, 64 - progressPt, matrix.color565(16, 16, 16));
+    matrix.setCursor(this->baseX + 3, 0);
+    matrix.setTextColor(matrix.color565(255, 255, 255));
     matrix.print(this->stopName);
+
+    if (this->info->error) {
+      matrix.setTextColor(matrix.color565(255, 0, 0));
+      matrix.setCursor(this->baseX + 3, ROW_HEIGHT);
+      matrix.print("JSON Error:");
+      matrix.setCursor(this->baseX + 3, ROW_HEIGHT * 2);
+      matrix.print(this->info->error.f_str());
+      return;
+    }
 
     this->info->stepAll();
     // Iterate in reverse so buses that are sooner are rendered on top
@@ -127,7 +207,12 @@ struct BusSchedule {
       if (!bus->present)
         continue;
 
-      matrix.setCursor(this->baseX, bus->currentY);
+      if (bus->actual) {
+        matrix.fillRect(this->baseX, bus->currentY, 2, 8, bus->color);
+      }
+
+      matrix.setCursor(this->baseX + 3, bus->currentY);
+      matrix.setTextColor(bus->color);
       matrix.print(bus->route);
       matrix.print(bus->terminal);
       matrix.print(": ");
@@ -147,13 +232,17 @@ struct BusSchedule {
     BusInfoSet *tmp = this->info;
     this->info = this->info2;
     this->info2 = tmp;
+
+    // Serial.println("Infos swapped, deserializing");
     
     DeserializationError error = deserializeJson(this->info->doc, client);
+    this->info->error = error;
     if (error) {
       Serial.print("Deserialization error: ");
       Serial.println(error.f_str());
       return;
     }
+    // Serial.println("Deserialized");
 
     JsonArray departures = this->info->doc["departures"];
     int departureCount = min(departures.size(), MAX_BUSES);
@@ -165,11 +254,12 @@ struct BusSchedule {
       const char* terminal = departure["terminal"];
       const char* departureText = departure["departure_text"];
       const char* tripId = departure["trip_id"];
+      bool actual = departure["actual"];
   
       int routeLen = strlen(routeName);
       int terminalLen = strlen(terminal);
       int busNameLen = routeLen + terminalLen;
-      longestRoute = max(longestRoute, longestRoute);
+      longestRoute = max(busNameLen, longestRoute);
 
       BusInfo *bus = &this->info->buses[i];
       bus->route = routeName;
@@ -178,6 +268,8 @@ struct BusSchedule {
       bus->busNameLen = busNameLen;
       bus->tripId = tripId;
       bus->present = true;
+      bus->color = tripColors.getColor(tripId);
+      bus->actual = actual;
 
       // Copy previous position of this bus in the list
       if (info2Valid) {
@@ -212,10 +304,13 @@ struct BusSchedule {
       client.println();
   
       bool prevWasNewline = false;
+      bool chunkHasBegan = false;
       bool parsed = false;
       while (true) {
         while (client.available()) {
           char c = client.read();
+
+          Serial.write(c);
   
           // If already parsed the content, skip any remaining bytes
           if (parsed) continue;
@@ -223,10 +318,16 @@ struct BusSchedule {
           // Skip HTTP headers
           // TODO: Should probably check the status code
           if (c == '\n') {
-            if (prevWasNewline) {
+            // The response is sent as chunked so need to skip the chunk length header also
+            if (chunkHasBegan) {
+              // Serial.println("Handling response");
               this->handleResponse();
               parsed = true;
               break;
+            }
+            if (prevWasNewline) {
+              // Serial.println("Chunk began");
+              chunkHasBegan = true;
             }
             prevWasNewline = true;
           } else if (c != '\r') {
@@ -246,64 +347,6 @@ struct BusSchedule {
     }
   }
 };
-
-//void handleResponse(boolean isStop2) {
-//  
-//
-//  
-//
-//  // Get bus info from the JSON
-//  BusInfo buses[MAX_BUSES];
-//  int longestRoute = 0;
-//  for (int i = 0; i < departureCount; i++) {
-//    JsonObject departure = departures[i];
-//    const char* routeName = departure["route_short_name"];
-//    const char* terminal = departure["terminal"];
-//    const char* departureText = departure["departure_text"];
-//
-//    int routeLen = strlen(routeName);
-//    int terminalLen = strlen(terminal);
-//    int busNameLen = routeLen + terminalLen;
-//    longestRoute = max(longestRoute, longestRoute);
-//
-//    buses[i].route = routeName;
-//    buses[i].terminal = terminal;
-//    buses[i].timeText = departureText;
-//    buses[i].busNameLen = busNameLen;
-//  }
-//
-//  matrix.setTextWrap(false);
-//
-//  int baseX = isStop2 ? 64 : 0;
-//  matrix.fillRect(baseX, 0, 64, 32, 0); // Clear background
-//  matrix.drawFastHLine(baseX, ROW_HEIGHT - 1, 64, matrix.color565(64, 64, 64));
-//  matrix.setCursor(baseX, 0);
-//  if (isStop2) {
-//    matrix.print(STOP_2_NAME);
-//  } else {
-//    matrix.print(STOP_1_NAME);
-//  }
-//
-//  for (int i = 0; i < departureCount; i++) {
-//    BusInfo* bus = &buses[i];
-//    matrix.setCursor(baseX, (i + 1) * ROW_HEIGHT);
-//    matrix.print(bus->route);
-//    matrix.print(bus->terminal);
-//    matrix.print(": ");
-//
-//    // Align the times
-//    for (int i = bus->busNameLen; i < longestRoute; i++)
-//      matrix.write(' ');
-//
-//    matrix.print(bus->timeText);
-//  }
-//
-//  matrix.show();
-//}
-//
-//void doRequest(boolean isStop2) {
-//  
-//}
 
 BusSchedule stop1(0, "40th & Lyn", "/nextrip/40268");
 BusSchedule stop2(64, "46th & Lyn", "/nextrip/2855");
@@ -334,25 +377,24 @@ void setup() {
   } while (wifiStatus != WL_CONNECTED);
   Serial.println("Wifi connected");
 
-//  doRequest(false);
-//  doRequest(true);
   matrix.println("Getting data");
   matrix.show();
   stop1.doRequest();
   stop2.doRequest();
 }
 
-void delayAndAnimate() {
+void delayAndAnimate(bool isStop1) {
   for (int i = 0; i < REQUEST_INTERVAL; i++) {
-    stop1.draw();
-    stop2.draw();
+    float pct = (float) (i + 1) / REQUEST_INTERVAL;
+    stop1.draw(isStop1 ? pct : 0);
+    stop2.draw(isStop1 ? 0 : pct);
     delay(ANIM_INTERVAL);
   }
 }
 
 void loop() {
-  delayAndAnimate();
+  delayAndAnimate(true);
   stop1.doRequest();
-  delayAndAnimate();
+  delayAndAnimate(false);
   stop2.doRequest();
 }
