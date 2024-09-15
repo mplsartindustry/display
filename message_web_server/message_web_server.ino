@@ -83,6 +83,8 @@ uint16_t map_seq(int x, int min, int max, uint16_t colors[], int len) {
 WiFiServer server(80);
 
 void setup(void) {
+  Serial.begin(9600);
+
   // initialize matrix
   ProtomatterStatus status = matrix.begin();
 
@@ -109,7 +111,7 @@ void setup(void) {
   // start the web server on port 80
   server.begin();
 
-  clear();  
+  clear();
   wave(60);
 
   clear();
@@ -151,10 +153,39 @@ void loop(void) {
   WiFiClient client = server.available();
 
   if (client) {
+    String line = String();
     bool currentLineIsBlank = true;
     while (client.connected()) {
       if (client.available()) {
         char c = client.read();
+
+        if (c != '\n') {
+          line += c;
+          Serial.print("line=");
+          Serial.println(line);
+        }
+        else {
+          if (line.startsWith("GET")) {
+            String request = line.substring(5);
+            String word = request.substring(0, request.indexOf(' '));
+            word.replace('_', ' ');
+
+            Serial.print("request=");
+            Serial.println(request);
+            Serial.print("word=");
+            Serial.println(word);
+
+            if (!word.startsWith("favicon")) {
+              clear();
+              matrix.setCursor(0, 0);
+              matrix.print(word);
+              matrix.show();
+            }
+          }
+          else {
+            line = String();
+          }
+        }
 
         // if you've gotten to the end of the line (received a newline
         // character) and the line is blank, the http request has ended,
