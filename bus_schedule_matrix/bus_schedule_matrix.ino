@@ -190,6 +190,9 @@ struct BusSchedule {
     matrix.print(this->stopName);
 
     if (this->info->error) {
+      // Erase buses
+      matrix.fillRect(this->baseX, ROW_HEIGHT, 64, 32 - ROW_HEIGHT, 0);
+
       matrix.setTextColor(matrix.color565(255, 0, 0));
       matrix.setCursor(this->baseX + 3, ASCENT + ROW_HEIGHT);
       matrix.print("JSON Error:");
