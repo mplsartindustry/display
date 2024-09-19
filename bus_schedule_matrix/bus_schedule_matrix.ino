@@ -22,10 +22,12 @@
 */
 
 #include <Adafruit_Protomatter.h>
+#include <Fonts/Picopixel.h>
 #include <WiFiNINA.h>
 #include <ArduinoJson.h>
 
 #include "wifi_credentials.h"
+#include "anim.h"
 
 uint8_t rgbPins[]  = {7, 8, 9, 10, 11, 12};
 uint8_t addrPins[] = {17, 18, 19, 20, 21};
@@ -49,10 +51,6 @@ uint16_t busColors[COLOR_COUNT] = {
 
 #define API_HOST "svc.metrotransit.org"
 
-// Up to 10 chars long to fit (until smaller font)
-#define STOP_1_NAME "40th & Lyn"
-#define STOP_2_NAME "46th & Lyn"
-
 #define ANIM_INTERVAL 100
 
 // Requests alternate between the two stops
@@ -61,8 +59,9 @@ uint16_t busColors[COLOR_COUNT] = {
 
 // TODO: Make bigger once I add smaller font
 // 1 more than fits on screen
-#define MAX_BUSES 4
-#define ROW_HEIGHT 8
+#define MAX_BUSES 5
+#define ROW_HEIGHT 6
+#define ASCENT 4
 
 struct AssignedColor {
   char tripId[128];
@@ -149,13 +148,13 @@ struct BusInfoSet {
   BusInfoSet() {
     for (int i = 0; i < MAX_BUSES; i++) {
       this->buses[i].present = false;
-      this->buses[i].currentY = (i + 1) * ROW_HEIGHT;
+      this->buses[i].currentY = (i + 1) * ROW_HEIGHT + 2;
     }
   }
 
   void stepAll() {
     for (int i = 0; i < MAX_BUSES; i++) {
-      this->buses[i].stepTowards((i + 1) * ROW_HEIGHT);
+      this->buses[i].stepTowards((i + 1) * ROW_HEIGHT + 2);
     }
   }
 };
@@ -186,15 +185,15 @@ struct BusSchedule {
     int progressPt = (int) (64 - 64 * progressPct);
     matrix.drawFastHLine(this->baseX, ROW_HEIGHT - 1, progressPt, matrix.color565(64, 64, 64)); // Underline
     matrix.drawFastHLine(this->baseX + progressPt, ROW_HEIGHT - 1, 64 - progressPt, matrix.color565(16, 16, 16));
-    matrix.setCursor(this->baseX + 3, 0);
+    matrix.setCursor(this->baseX + 3, ASCENT);
     matrix.setTextColor(matrix.color565(255, 255, 255));
     matrix.print(this->stopName);
 
     if (this->info->error) {
       matrix.setTextColor(matrix.color565(255, 0, 0));
-      matrix.setCursor(this->baseX + 3, ROW_HEIGHT);
+      matrix.setCursor(this->baseX + 3, ASCENT + ROW_HEIGHT);
       matrix.print("JSON Error:");
-      matrix.setCursor(this->baseX + 3, ROW_HEIGHT * 2);
+      matrix.setCursor(this->baseX + 3, ASCENT + ROW_HEIGHT * 2);
       matrix.print(this->info->error.f_str());
       return;
     }
@@ -208,23 +207,21 @@ struct BusSchedule {
         continue;
 
       if (bus->actual) {
-        matrix.fillRect(this->baseX, bus->currentY, 2, 8, bus->color);
+        matrix.fillRect(this->baseX, bus->currentY, 2, ROW_HEIGHT - 1, bus->color);
       }
 
-      matrix.setCursor(this->baseX + 3, bus->currentY);
+      matrix.setCursor(this->baseX + 3, bus->currentY + ASCENT);
       matrix.setTextColor(bus->color);
       matrix.print(bus->route);
       matrix.print(bus->terminal);
-      matrix.print(": ");
+      matrix.print(":  ");
   
       // Align the times
-      for (int i = bus->busNameLen; i < this->info->longestRoute; i++)
+      for (int i = bus->busNameLen; i <= this->info->longestRoute; i++)
         matrix.write(' ');
   
       matrix.print(bus->timeText);
     }
-  
-    matrix.show();
   }
 
   void handleResponse() {
@@ -233,7 +230,7 @@ struct BusSchedule {
     this->info = this->info2;
     this->info2 = tmp;
 
-    // Serial.println("Infos swapped, deserializing");
+    Serial.println("Infos swapped, deserializing");
     
     DeserializationError error = deserializeJson(this->info->doc, client);
     this->info->error = error;
@@ -242,19 +239,26 @@ struct BusSchedule {
       Serial.println(error.f_str());
       return;
     }
-    // Serial.println("Deserialized");
+    Serial.println("Deserialized");
 
     JsonArray departures = this->info->doc["departures"];
     int departureCount = min(departures.size(), MAX_BUSES);
 
+    Serial.println("Got departure count: ");
+    Serial.println(departureCount);
+
     int longestRoute = 0;
     for (int i = 0; i < departureCount; i++) {
+      Serial.print("Deserializing ");
+      Serial.println(i);
       JsonObject departure = departures[i];
       const char* routeName = departure["route_short_name"];
       const char* terminal = departure["terminal"];
       const char* departureText = departure["departure_text"];
       const char* tripId = departure["trip_id"];
       bool actual = departure["actual"];
+
+      Serial.println("Got the values");
   
       int routeLen = strlen(routeName);
       int terminalLen = strlen(terminal);
@@ -271,14 +275,20 @@ struct BusSchedule {
       bus->color = tripColors.getColor(tripId);
       bus->actual = actual;
 
+      Serial.println("Set the values");
+      Serial.println("This bus is called:");
+      Serial.println(tripId);
+
       // Copy previous position of this bus in the list
       if (info2Valid) {
         for (int j = 0; j < MAX_BUSES; j++) {
-          if (strcmp(tripId, this->info2->buses[j].tripId) == 0) {
+          if (this->info2->buses[j].present && strcmp(tripId, this->info2->buses[j].tripId) == 0) {
             bus->currentY = this->info2->buses[j].currentY;
           }
         }
       }
+
+      Serial.println("Done with this bus");
     }
     this->info->longestRoute = longestRoute;
 
@@ -288,6 +298,8 @@ struct BusSchedule {
 
     this->info2Valid = true;
     this->newData = true;
+
+    Serial.println("Done handling!");
   }
 
   void doRequest() {
@@ -348,8 +360,8 @@ struct BusSchedule {
   }
 };
 
-BusSchedule stop1(0, "40th & Lyn", "/nextrip/40268");
-BusSchedule stop2(64, "46th & Lyn", "/nextrip/2855");
+BusSchedule stop1(0, "40th and Lyndale", "/nextrip/40268");
+BusSchedule stop2(64, "46th and Lyndale", "/nextrip/2855");
 
 void setup() {
   Serial.begin(9600);
@@ -361,6 +373,8 @@ void setup() {
     Serial.println("Protomatter begin failed");
     delay(1000);
   }
+
+  matrix.setFont(&Picopixel);
 
   // Connect to WiFi
   matrix.println("Connecting to WiFi");
@@ -383,18 +397,49 @@ void setup() {
   stop2.doRequest();
 }
 
+uint8_t animCounter = 0;
+uint8_t animFrame = 0;
+
+void drawAnimation(int x, int y) {
+  // Slow down!
+  if (animCounter == 0) {
+    animCounter = 1;
+    animFrame++;
+    animFrame %= ANIMATION_LEN;
+  } else {
+    animCounter--;
+  }
+
+  uint16_t color = matrix.color565(64, 64, 64);
+  for (uint8_t colIdx = 0; colIdx < ANIMATION_WIDTH; colIdx++) {
+    uint16_t colData = getAnimationColumn(animFrame, colIdx);
+    for (uint8_t i = 0; i < 16; i++) {
+      if (colData & (1 << i)) {
+        matrix.drawPixel(x + colIdx, y + (15 - i), color);
+      }
+    }
+  }
+}
+
 void delayAndAnimate(bool isStop1) {
   for (int i = 0; i < REQUEST_INTERVAL; i++) {
     float pct = (float) (i + 1) / REQUEST_INTERVAL;
     stop1.draw(isStop1 ? pct : 0);
     stop2.draw(isStop1 ? 0 : pct);
+    drawAnimation(46, 12);
+    matrix.show();
     delay(ANIM_INTERVAL);
   }
 }
 
 void loop() {
+  Serial.println("A");
   delayAndAnimate(true);
+  Serial.println("B");
   stop1.doRequest();
+  Serial.println("C");
   delayAndAnimate(false);
+  Serial.println("D");
   stop2.doRequest();
+  Serial.println("E");
 }
