@@ -21,15 +21,24 @@
 
 */
 
-// Set board to "FireBeetle 2 ESP32-E"
-// To upload:
+// Set board to "ESP32 Dev Module"
+
+// To upload over USB:
 // 0. Upload Adafruit MatrixPortal passthrough UF2 to ATSamd51
 // 1. Enable verbose output in preferences
 // 2. Press verify
 // 3. Copy path to merged.bin file
 // 4. Run esptool.py: python3 esptool.py --before no_reset --after no_reset write_flash 0 {bin file}
 
+// To upload over OTA (WiFi):
+// 0. Code has to be uploaded over USB initially to enable OTA
+// 1. Select the ESP in Tools>Port, should show as a network port
+// 2. Press upload button, password is "bus"
+
 #include <WiFi.h>
+#include <ESPmDNS.h>
+#include <NetworkUdp.h>
+#include <ArduinoOTA.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -67,7 +76,10 @@ static_assert(sizeof(ScheduleData) == DATA_SIZE);
 
 const uint8_t START_BYTE = 0xA5;
 
+const long REQUEST_DELAY = 30000;
+
 ScheduleData response;
+long prevRequestTime;
 
 void setup() {
   Serial.begin(115200);
@@ -78,6 +90,12 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
   }
+
+  ArduinoOTA.setHostname("bus-schedule-esp32");
+  ArduinoOTA.setPassword("bus");
+  ArduinoOTA.begin();
+
+  prevRequestTime = millis() - REQUEST_DELAY;
 }
 
 void putString(const char* src, char* dst, size_t dstLen) {
@@ -180,7 +198,11 @@ void doRequest(const char* url, uint8_t stopIndex) {
 }
 
 void loop() {
-  doRequest(URL_1, 0);
-  doRequest(URL_2, 1);
-  delay(30000);
+  ArduinoOTA.handle();
+
+  if (millis() - prevRequestTime >= REQUEST_DELAY) {
+    doRequest(URL_1, 0);
+    doRequest(URL_2, 1);
+    prevRequestTime = millis();
+  }
 }
