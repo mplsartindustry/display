@@ -216,6 +216,9 @@ struct BusSchedule {
 
       int y = bus->currentY;
 
+      // Clear behind text
+      matrix.fillRect(baseX, y, 64, ROW_HEIGHT, 0);
+
       if (bus->data.actual)
         matrix.fillRect(baseX, y, 2, ROW_HEIGHT - 1, bus->color);
     
@@ -274,7 +277,8 @@ BusSchedule stop1(0, "40th and Lyndale");
 BusSchedule stop2(64, "46th and Lyndale");
 
 void setup() {
-  SerialESP32.begin(115200);
+  Serial.begin(SERIAL_BAUD);
+  SerialESP32.begin(SERIAL_BAUD);
 
   pinMode(LED_BUILTIN, OUTPUT);
   
