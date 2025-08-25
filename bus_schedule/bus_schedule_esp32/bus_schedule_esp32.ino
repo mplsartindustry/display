@@ -60,7 +60,7 @@ const char *HOSTNAME = "bus-schedule-esp32-2";
 #ifdef IS_FIRST_DISPLAY
 const char *URL_1 = "https://svc.metrotransit.org/nextrip/40268"; // 40th & Lyndale Southbound: 4P, 4L
 const char *URL_2 = "https://svc.metrotransit.org/nextrip/2855"; // 46th & Lyndale Southbound: 4P, 4L, 46
-const char *URL_3 = "https://svc.metrotransit.org/nextrip/14864"; // Grand & 40th: 113
+const char *URL_3 = "https://svc.metrotransit.org/nextrip/14886"; // Grand & 40th: 113
 #else
 const char *URL = "https://svc.metrotransit.org/nextrip/40267"; // 40th & Lyndale Northbound: 4B
 #endif
@@ -153,8 +153,11 @@ void handleResponse(String json, uint8_t stopIndex) {
     const char *departure = bus["departure_text"];
 
     // Make sure everything is there
-    if (tripId == nullptr || route == nullptr || terminal == nullptr || departure == nullptr) {
+    if (tripId == nullptr || route == nullptr || departure == nullptr) {
       continue;
+    }
+    if (terminal == nullptr) {
+      terminal = "";
     }
 
     BusData *data = &response.buses.buses[writtenCount];
