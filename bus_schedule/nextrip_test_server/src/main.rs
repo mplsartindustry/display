@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use axum::{Json, Router, extract::Path, routing::get};
 use axum_server::tls_rustls::RustlsConfig;
 use serde::Serialize;
+use tracing::Level;
 
 #[derive(Serialize)]
 enum ScheduleRelationship {
@@ -74,7 +75,10 @@ async fn get_nextrip(Path(stop_id): Path<i32>) -> Json<NexTripResponse> {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().init();
+    // Set up logging
+    tracing_subscriber::fmt()
+        .with_max_level(Level::TRACE)
+        .init();
 
     let config = RustlsConfig::from_pem(
         include_bytes!("self_signed_cert/cert.pem").into(),
