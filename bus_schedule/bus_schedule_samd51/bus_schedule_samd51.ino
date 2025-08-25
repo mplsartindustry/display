@@ -37,7 +37,7 @@ const uint8_t ROW_HEIGHT = 6;
 const uint8_t ASCENT = 4;
 
 const uint8_t START_BYTE = 0xA5;
-const uint16_t DATA_SIZE = 1 + 1 + 1 + (1 + 64 + 4 + 4 + 16) * MAX_BUSES;
+const uint16_t DATA_SIZE = 1 + 1 + 1 + (1 + 64 + 4 + 4 + 16 + 1) * MAX_BUSES;
 const int SERIAL_BAUD = 115200;
 const int SERIAL_BYTES_PER_LOOP = 115200 / 8 / 60;
 
@@ -64,12 +64,19 @@ uint16_t busColors[COLOR_COUNT] = {
   matrix.color565(128, 32, 255),
 };
 
+enum class ScheduleRelationship: uint8_t {
+  UNKNOWN = 0,
+  SCHEDULED = 1,
+  SKIPPED = 2,
+};
+
 struct BusData {
   uint8_t actual;
   char tripId[64];
   char route[4];
   char terminal[4];
   char departure[16];
+  ScheduleRelationship scheduleRelationship;
 } __attribute__ ((packed));
 
 struct Buses {
@@ -246,16 +253,23 @@ struct BusSchedule {
       // Clear behind text
       matrix.fillRect(baseX, y, width, ROW_HEIGHT, 0);
 
+      bool skipped = bus->data.scheduleRelationship == ScheduleRelationship::SKIPPED;
+      uint16_t color = skipped ? matrix.color565(48, 0, 0) : bus->color;
+
       if (bus->data.actual)
-        matrix.fillRect(baseX, y, 2, ROW_HEIGHT - 1, bus->color);
+        matrix.fillRect(baseX, y, 2, ROW_HEIGHT - 1, color);
     
       matrix.setCursor(baseX + 3, y + ASCENT);
-      matrix.setTextColor(bus->color);
+      matrix.setTextColor(color);
       matrix.print(bus->data.route);
       matrix.print(bus->data.terminal);
       matrix.print(":");
       matrix.setCursor(baseX + info->longestNamePx + 9, y + ASCENT);
       matrix.print(bus->data.departure);
+
+      if (skipped) {
+        matrix.drawFastHLine(baseX, y + 2, width - 1, color);
+      }
     }
   }
 
