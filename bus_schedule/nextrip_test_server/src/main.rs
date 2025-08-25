@@ -76,9 +76,7 @@ async fn get_nextrip(Path(stop_id): Path<i32>) -> Json<NexTripResponse> {
 #[tokio::main]
 async fn main() {
     // Set up logging
-    tracing_subscriber::fmt()
-        .with_max_level(Level::TRACE)
-        .init();
+    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     let config = RustlsConfig::from_pem(
         include_bytes!("self_signed_cert/cert.pem").into(),
