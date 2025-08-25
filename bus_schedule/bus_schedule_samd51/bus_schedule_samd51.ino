@@ -21,10 +21,16 @@
 
 */
 
+// Add Adafruit board manager URL: https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
+// Install "Adafruit SAMD Boards" in Board Manager
+// Install "Adafruit Protomatter" in Library Manager
 // Set board to "Adafruit Matrix Portal M4"
 
 #include <Adafruit_Protomatter.h>
 #include <Fonts/Picopixel.h>
+
+// Comment for second display
+#define IS_FIRST_DISPLAY
 
 const uint8_t MAX_BUSES = 5;
 const uint8_t ROW_HEIGHT = 6;
@@ -40,7 +46,12 @@ uint8_t addrPins[] = {17, 18, 19, 20, 21};
 const uint8_t clockPin   = 14;
 const uint8_t latchPin   = 15;
 const uint8_t oePin      = 16;
-Adafruit_Protomatter matrix(128, 4, 1, rgbPins, 4, addrPins, clockPin, latchPin, oePin, false);
+#ifdef IS_FIRST_DISPLAY
+const uint16_t bitWidth = 128;
+#else
+const uint16_t bitWidth = 64;
+#endif
+Adafruit_Protomatter matrix(bitWidth, 4, 1, rgbPins, 4, addrPins, clockPin, latchPin, oePin, false);
 
 const uint8_t COLOR_COUNT = 7;
 uint16_t busColors[COLOR_COUNT] = {
@@ -128,8 +139,6 @@ struct TripColors {
   }
 };
 
-TripColors tripColors;
-
 struct BusInfo {
   int currentY;
   uint16_t color;
@@ -177,15 +186,19 @@ struct BusInfoSet {
 
 struct BusSchedule {
   int baseX;
+  int width;
   const char *stopName;
+  TripColors *tripColors;
   BusInfoSet *info, *info2;
   int animTimer;
+  bool hasData;
 
-  BusSchedule(int _baseX, const char *_stopName)
-  : baseX(_baseX), stopName(_stopName) {
+  BusSchedule(int _baseX, int _width, const char *_stopName, TripColors *_tripColors)
+  : baseX(_baseX), width(_width), stopName(_stopName), tripColors(_tripColors) {
     info = new BusInfoSet();
     info2 = new BusInfoSet();
     animTimer = 10;
+    hasData = false;
   }
 
   void draw() {
@@ -197,17 +210,31 @@ struct BusSchedule {
 
     matrix.setTextWrap(false);
 
-    matrix.drawFastHLine(baseX, ROW_HEIGHT - 1, 64, matrix.color565(64, 64, 64));
+    matrix.drawFastHLine(baseX, ROW_HEIGHT - 1, width, matrix.color565(64, 64, 64));
     matrix.setCursor(baseX + 3, ASCENT);
     matrix.setTextColor(0xFFFF);
     matrix.print(stopName);
 
+    if (!hasData) {
+      matrix.setTextColor(matrix.color565(48, 48, 48));
+      matrix.setCursor(baseX + 3, ASCENT + ROW_HEIGHT + 2);
+      matrix.print("Loading...");
+      return;
+    }
+
     if (info->hasError) {
       matrix.setTextColor(matrix.color565(255, 0, 0));
-      matrix.setCursor(baseX + 3, ASCENT + ROW_HEIGHT);
+      matrix.setCursor(baseX + 3, ASCENT + ROW_HEIGHT + 2);
       matrix.print("Error:");
-      matrix.setCursor(baseX + 3, ASCENT + ROW_HEIGHT * 2);
+      matrix.setCursor(baseX + 3, ASCENT + ROW_HEIGHT * 2 + 2);
       matrix.print(info->errorStr);
+      return;
+    }
+
+    if (info->busCount == 0) {
+      matrix.setTextColor(matrix.color565(48, 48, 48));
+      matrix.setCursor(baseX + 3, ASCENT + ROW_HEIGHT * 2 + ROW_HEIGHT / 2 + 1);
+      matrix.print("No buses :(");
       return;
     }
 
@@ -217,7 +244,7 @@ struct BusSchedule {
       int y = bus->currentY;
 
       // Clear behind text
-      matrix.fillRect(baseX, y, 64, ROW_HEIGHT, 0);
+      matrix.fillRect(baseX, y, width, ROW_HEIGHT, 0);
 
       if (bus->data.actual)
         matrix.fillRect(baseX, y, 2, ROW_HEIGHT - 1, bus->color);
@@ -227,7 +254,7 @@ struct BusSchedule {
       matrix.print(bus->data.route);
       matrix.print(bus->data.terminal);
       matrix.print(":");
-      matrix.setCursor(baseX + info->longestNamePx + 10, y + ASCENT);
+      matrix.setCursor(baseX + info->longestNamePx + 9, y + ASCENT);
       matrix.print(bus->data.departure);
     }
   }
@@ -237,6 +264,8 @@ struct BusSchedule {
     info = info2;
     info2 = tmp;
     info->resetPositions();
+
+    hasData = true;
 
     if (data->isError) {
       info->hasError = true;
@@ -250,7 +279,7 @@ struct BusSchedule {
     for (int i = 0; i < info->busCount; i++) {
       BusInfo *bus = &info->buses[i];
       bus->data = data->buses.buses[i];
-      bus->color = tripColors.getColor(bus->data.tripId);
+      bus->color = tripColors->getColor(bus->data.tripId);
 
       for (int j = 0; j < info2->busCount; j++) {
         if (strcmp(bus->data.tripId, info2->buses[j].data.tripId) == 0) {
@@ -273,8 +302,18 @@ bool reading;
 uint8_t readBuf[DATA_SIZE];
 uint16_t readIndex;
 
-BusSchedule stop1(0, "40th and Lyndale");
-BusSchedule stop2(64, "46th and Lyndale");
+#ifdef IS_FIRST_DISPLAY
+// Group trip colors by stops that could have the same bus
+TripColors tripColors_40and46;
+TripColors tripColors_113;
+
+BusSchedule stop1(0, 39, "40 & Lyn S", &tripColors_40and46);
+BusSchedule stop2(39, 84 - 39, "46 & Lyn", &tripColors_40and46);
+BusSchedule stop3(84, 128 - 84, "Grand & 40", &tripColors_113);
+#else
+TripColors tripColors;
+BusSchedule stop(0, 64, "40th & Lyndale N", &tripColors);
+#endif
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
@@ -313,11 +352,18 @@ void readIncomingData() {
         reading = false;
 
         ScheduleData *data = (ScheduleData*) readBuf;
+#ifdef IS_FIRST_DISPLAY
         if (data->stopIndex == 0) {
           stop1.handleResponse(data);
         } else if (data->stopIndex == 1) {
           stop2.handleResponse(data);
+        } else if (data->stopIndex == 2) {
+          stop3.handleResponse(data);
         }
+#else
+        // Only one stop to handle
+        stop.handleResponse(data);
+#endif
       }
     } else {
       // Wait for start to ensure we're reading the right data
@@ -334,8 +380,13 @@ void loop() {
   readIncomingData();
 
   matrix.fillScreen(0);
+#ifdef IS_FIRST_DISPLAY
   stop1.draw();
   stop2.draw();
+  stop3.draw();
+#else
+  stop.draw();
+#endif
   matrix.show();
 
   // Run at about 50 fps
