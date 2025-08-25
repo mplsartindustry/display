@@ -67,12 +67,19 @@ const char *URL = "https://svc.metrotransit.org/nextrip/40267"; // 40th & Lyndal
 
 const uint8_t MAX_BUSES = 5;
 
+enum class ScheduleRelationship: uint8_t {
+  UNKNOWN = 0,
+  SCHEDULED = 1,
+  SKIPPED = 2,
+};
+
 struct BusData {
   uint8_t actual;
   char tripId[64];
   char route[4];
   char terminal[4];
   char departure[16];
+  ScheduleRelationship scheduleRelationship;
 } __attribute__ ((packed));
 
 struct Buses {
@@ -89,7 +96,7 @@ struct ScheduleData {
   };
 } __attribute__ ((packed));
 
-const uint16_t DATA_SIZE = 1 + 1 + 1 + (1 + 64 + 4 + 4 + 16) * MAX_BUSES;
+const uint16_t DATA_SIZE = 1 + 1 + 1 + (1 + 64 + 4 + 4 + 16 + 1) * MAX_BUSES;
 static_assert(sizeof(ScheduleData) == DATA_SIZE);
 
 const uint8_t START_BYTE = 0xA5;
@@ -151,6 +158,7 @@ void handleResponse(String json, uint8_t stopIndex) {
     const char *route = bus["route_short_name"];
     const char *terminal = bus["terminal"];
     const char *departure = bus["departure_text"];
+    const char *scheduleRelationship = bus["schedule_relationship"];
 
     // Make sure everything is there
     if (tripId == nullptr || route == nullptr || terminal == nullptr || departure == nullptr) {
@@ -163,6 +171,15 @@ void handleResponse(String json, uint8_t stopIndex) {
     putString(route, data->route, sizeof(data->route));
     putString(terminal, data->terminal, sizeof(data->terminal));
     putString(departure, data->departure, sizeof(data->departure));
+
+    data->scheduleRelationship = ScheduleRelationship::UNKNOWN;
+    if (scheduleRelationship != nullptr) {
+      if (strcmp(scheduleRelationship, "Scheduled") == 0) {
+        data->scheduleRelationship = ScheduleRelationship::SCHEDULED;
+      } else if (strcmp(scheduleRelationship, "Skipped") == 0) {
+        data->scheduleRelationship = ScheduleRelationship::SKIPPED;
+      }
+    }
 
     writtenCount++;
   }
