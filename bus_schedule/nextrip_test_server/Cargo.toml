@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 axum = "0.8.4"
 axum-server = { version = "0.7.2", features = ["tls-rustls"] }
-rustls = { version = "0.23.31", features = ["logging"] }
+rustls = { version = "0.23.31", features = ["tls12", "logging"] }
 serde = { version = "1.0.219", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
 tracing = "0.1.41"
