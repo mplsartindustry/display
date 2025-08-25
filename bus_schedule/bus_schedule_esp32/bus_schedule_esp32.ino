@@ -21,14 +21,18 @@
 
 */
 
+// Setup:
+// Install "esp32" board library in Boards Manager
+// Install "ArduinoJson" library in Library Manager
 // Set board to "ESP32 Dev Module"
 
 // To upload over USB:
-// 0. Upload Adafruit MatrixPortal passthrough UF2 to ATSamd51
-// 1. Enable verbose output in preferences
-// 2. Press verify
-// 3. Copy path to merged.bin file
-// 4. Run esptool.py: python3 esptool.py --before no_reset --after no_reset write_flash 0 {bin file}
+// 0. Double press reset button to enter bootloader
+// 1. Upload Adafruit MatrixPortal passthrough UF2 to ATSamd51
+// 2. Enable verbose output in preferences
+// 3. Press verify
+// 4. Copy path to merged.bin file
+// 5. Run esptool.py: python3 esptool.py --before no_reset --after no_reset write_flash 0 {bin file}
 
 // To upload over OTA (WiFi):
 // 0. Code has to be uploaded over USB initially to enable OTA
@@ -44,8 +48,22 @@
 #include <ArduinoJson.h>
 #include "wifi_credentials.h"
 
-const char *URL_1 = "https://svc.metrotransit.org/nextrip/40268";
-const char *URL_2 = "https://svc.metrotransit.org/nextrip/2855";
+// Comment for second display
+#define IS_FIRST_DISPLAY
+
+#ifdef IS_FIRST_DISPLAY
+const char *HOSTNAME = "bus-schedule-esp32-1";
+#else
+const char *HOSTNAME = "bus-schedule-esp32-2";
+#endif
+
+#ifdef IS_FIRST_DISPLAY
+const char *URL_1 = "https://svc.metrotransit.org/nextrip/40268"; // 40th & Lyndale Southbound: 4P, 4L
+const char *URL_2 = "https://svc.metrotransit.org/nextrip/2855"; // 46th & Lyndale Southbound: 4P, 4L, 46
+const char *URL_3 = "https://svc.metrotransit.org/nextrip/14864"; // Grand & 40th: 113
+#else
+const char *URL = "https://svc.metrotransit.org/nextrip/40267"; // 40th & Lyndale Northbound: 4B
+#endif
 
 const uint8_t MAX_BUSES = 5;
 
@@ -91,7 +109,7 @@ void setup() {
     delay(1000);
   }
 
-  ArduinoOTA.setHostname("bus-schedule-esp32");
+  ArduinoOTA.setHostname(HOSTNAME);
   ArduinoOTA.setPassword("bus");
   ArduinoOTA.begin();
 
@@ -120,7 +138,6 @@ void handleResponse(String json, uint8_t stopIndex) {
     return;
   }
 
-  response.stopIndex = stopIndex;
   response.isError = false;
 
   JsonArray departures = doc["departures"];
@@ -155,6 +172,7 @@ void handleResponse(String json, uint8_t stopIndex) {
 }
 
 void doRequest(const char* url, uint8_t stopIndex) {
+  response.stopIndex = stopIndex;
   WiFiClientSecure *client = new WiFiClientSecure;
   if (client) {
     // MetroTransit requires HTTPS, but I don't want to deal with certs
@@ -201,8 +219,13 @@ void loop() {
   ArduinoOTA.handle();
 
   if (millis() - prevRequestTime >= REQUEST_DELAY) {
+#ifdef IS_FIRST_DISPLAY
     doRequest(URL_1, 0);
     doRequest(URL_2, 1);
+    doRequest(URL_3, 2);
+#else
+    doRequest(URL, 0);
+#endif
     prevRequestTime = millis();
   }
 }
