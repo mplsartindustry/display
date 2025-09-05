@@ -323,7 +323,7 @@ TripColors tripColors;
 
 BusSchedule stop(0, 39, "40 & Lyn N", &tripColors);
 BusSchedule stop1(39, 84 - 39, "40 & Lyn S", &tripColors_40and46);
-BusSchedule stop2(84, 128 - 84, "46 & Lyn S", &tripColors_40and46);
+BusSchedule stop2(84, 128 - 84, "50 & Lyn S", &tripColors_40and46);
 
 #else
 TripColors tripColors_113;
