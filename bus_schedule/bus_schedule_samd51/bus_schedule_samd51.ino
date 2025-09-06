@@ -53,15 +53,19 @@ const uint16_t bitWidth = 64;
 #endif
 Adafruit_Protomatter matrix(bitWidth, 4, 1, rgbPins, 4, addrPins, clockPin, latchPin, oePin, false);
 
-const uint8_t COLOR_COUNT = 7;
+const uint8_t COLOR_COUNT = 11;
 uint16_t busColors[COLOR_COUNT] = {
   matrix.color565(255, 0, 0),
   matrix.color565(255, 128, 0),
   matrix.color565(255, 255, 0),
   matrix.color565(0, 255, 0),
+  matrix.color565(59, 159, 0),
   matrix.color565(0, 255, 255),
+  matrix.color565(0, 128, 255),
   matrix.color565(16, 32, 255),
   matrix.color565(128, 32, 255),
+  matrix.color565(192, 0, 255),
+  matrix.color565(232, 161, 255)
 };
 
 enum class ScheduleRelationship: uint8_t {
@@ -105,7 +109,7 @@ struct TripColors {
   int8_t filled[COLOR_COUNT];
   uint8_t nextColorIdx;
 
-  TripColors(): nextColorIdx(0) {
+  TripColors(uint8_t firstIndex): nextColorIdx(firstIndex) {
     for (uint8_t i = 0; i < COLOR_COUNT; i++) {
       filled[i] = -1;
     }
@@ -318,8 +322,8 @@ uint16_t readIndex;
 
 #ifdef IS_FIRST_DISPLAY
 // Group trip colors by stops that could have the same bus
-TripColors tripColors_40and46;
-TripColors tripColors;
+TripColors tripColors_40and46(0);
+TripColors tripColors(COLOR_COUNT / 2);
 
 const int STOP_2_X = 42;
 const int STOP_3_X = 84;
@@ -328,7 +332,7 @@ BusSchedule stop2(STOP_2_X, STOP_3_X - STOP_2_X, "40 & Lyn S", &tripColors_40and
 BusSchedule stop3(STOP_3_X, 128 - STOP_3_X, "50 & Lyn S", &tripColors_40and46);
 
 #else
-TripColors tripColors_113;
+TripColors tripColors_113(0);
 BusSchedule stop(0, 64, "40 & Grand N", &tripColors_113);
 #endif
 
