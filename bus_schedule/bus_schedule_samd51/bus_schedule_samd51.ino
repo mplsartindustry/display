@@ -321,9 +321,11 @@ uint16_t readIndex;
 TripColors tripColors_40and46;
 TripColors tripColors;
 
-BusSchedule stop1(0, 39, "40 & Lyn N", &tripColors);
-BusSchedule stop2(39, 84 - 39, "40 & Lyn S", &tripColors_40and46);
-BusSchedule stop3(84, 128 - 84, "50 & Lyn S", &tripColors_40and46);
+const int STOP_2_X = 42;
+const int STOP_3_X = 84;
+BusSchedule stop1(0, STOP_2_X, "40 & Lyn N", &tripColors);
+BusSchedule stop2(STOP_2_X, STOP_3_X - STOP_2_X, "40 & Lyn S", &tripColors_40and46);
+BusSchedule stop3(STOP_3_X, 128 - STOP_3_X, "50 & Lyn S", &tripColors_40and46);
 
 #else
 TripColors tripColors_113;
