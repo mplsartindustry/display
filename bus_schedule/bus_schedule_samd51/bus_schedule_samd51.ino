@@ -1,7 +1,7 @@
 /*
 
     mplsartindustry/display
-    Copyright (c) 2024 held jointly by the individual authors.
+    Copyright (c) 2024-2026 held jointly by the individual authors.
 
     This file is part of mplsartindustry/display.
 
@@ -25,6 +25,7 @@
 // Install "Adafruit SAMD Boards" in Board Manager
 // Install "Adafruit Protomatter" in Library Manager
 // Set board to "Adafruit Matrix Portal M4"
+// Upload via USB, hit the reset button twice if necessary
 
 #include <Adafruit_Protomatter.h>
 #include <Fonts/Picopixel.h>
@@ -328,8 +329,8 @@ TripColors tripColors(COLOR_COUNT / 2);
 const int STOP_2_X = 42;
 const int STOP_3_X = 84;
 BusSchedule stop1(0, STOP_2_X, "40 & Lyn S", &tripColors_40and46);
-BusSchedule stop1(STOP_2_X, STOP_3_X - STOP_2_X, "50 & Lyn S", &tripColors_40and46);
-BusSchedule stop2(STOP_3_X, 128 - STOP_3_X, "50 & Chwn", &tripColors_40and46);
+BusSchedule stop2(STOP_2_X, STOP_3_X - STOP_2_X, "50 & Lyn S", &tripColors_40and46);
+BusSchedule stop3(STOP_3_X, 128 - STOP_3_X, "50 & Chwn", &tripColors_40and46);
 
 #else
 TripColors tripColors_113(0);
