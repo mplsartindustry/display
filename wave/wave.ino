@@ -1,7 +1,7 @@
 /*
 
     mplsartindustry/display
-    Copyright (c) 2024 held jointly by the individual authors.
+    Copyright (c) 2024-2026 held jointly by the individual authors.
 
     This file is part of mplsartindustry/display.
 
